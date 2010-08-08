@@ -37,6 +37,9 @@ import java.util.Set;
 
 /**
  * Based on apps/Launcher/src/com/android/launcher/Workspace.java
+ * 
+ * User: jeanguy@gmail.com
+ * Date: Aug 8, 2010
  */
 public class HorizontalPager extends ViewGroup
 {
@@ -88,12 +91,6 @@ public class HorizontalPager extends ViewGroup
      */
     public HorizontalPager(Context context, AttributeSet attrs, int defStyle) {
         super(context, attrs, defStyle);
-
-/*
-        TypedArray a = context.obtainStyledAttributes(attrs, R.styleable.Workspace, defStyle, 0);
-        a.recycle();
-*/
-
         initWorkspace();
     }
 
@@ -363,8 +360,6 @@ public class HorizontalPager extends ViewGroup
 
     @Override
     public boolean onTouchEvent(MotionEvent ev) {
-        //Log.d(TAG, "onTouchEvent::action=" + ev.getAction());
-
         if (mVelocityTracker == null) {
             mVelocityTracker = VelocityTracker.obtain();
         }
@@ -395,18 +390,6 @@ public class HorizontalPager extends ViewGroup
                     int deltaX = (int) (mLastMotionX - x);
                     mLastMotionX = x;
 
-/*
-                    if (deltaX < 0) {
-                        if (getScrollX() > 0) {
-                            scrollBy(Math.max(-getScrollX(), deltaX), 0);
-                        }
-                    } else if (deltaX > 0) {
-                        final int availableToScroll = getChildAt(getChildCount() - 1).getRight() - getScrollX() - getWidth();
-                        if (availableToScroll > 0) {
-                            scrollBy(Math.min(availableToScroll, deltaX), 0);
-                        }
-                    }
-*/
                     // Apply friction to scrolling past boundaries.
                     if (getScrollX() < 0 || getScrollX() > getChildAt(getChildCount() - 1).getLeft()) {
                         deltaX /= 2;
@@ -480,7 +463,6 @@ public class HorizontalPager extends ViewGroup
     protected Parcelable onSaveInstanceState() {
         final SavedState state = new SavedState(super.onSaveInstanceState());
         state.currentScreen = mCurrentScreen;
-        //Log.d(TAG, "onSaveInstanceState::mCurrentScreen=" + mCurrentScreen);
         return state;
     }
 
@@ -491,7 +473,6 @@ public class HorizontalPager extends ViewGroup
         if (savedState.currentScreen != -1) {
             mCurrentScreen = savedState.currentScreen;
         }
-        //Log.d(TAG, "onRestoreInstanceState::mCurrentScreen=" + mCurrentScreen);
     }
 
     public void scrollLeft() {
