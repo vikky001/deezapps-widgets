@@ -7,7 +7,7 @@ import android.view.View;
 import android.widget.Button;
 
 /**
- * User: jean-guyspeton
+ * User: jeanguy@gmail.com
  * Date: Aug 8, 2010
  */
 public class TestActivity extends Activity {
