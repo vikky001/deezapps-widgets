@@ -14,9 +14,28 @@ package com.deezapps.widget;
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * --
+ * 
+ * Based on http://android.git.kernel.org/?p=platform/packages/apps/Launcher.git;a=blob;f=src/com/android/launcher/Workspace.java
+ *
+ * Copyright (C) 2008 The Android Open Source Project
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 import android.content.Context;
+import android.content.res.TypedArray;
 import android.graphics.Canvas;
 import android.graphics.Rect;
 import android.os.Parcel;
@@ -36,8 +55,6 @@ import java.util.HashSet;
 import java.util.Set;
 
 /**
- * Based on apps/Launcher/src/com/android/launcher/Workspace.java
- * 
  * User: jeanguy@gmail.com
  * Date: Aug 8, 2010
  */
@@ -46,19 +63,25 @@ public class HorizontalPager extends ViewGroup
     public static final String TAG = "DeezApps.Widget.HorizontalPager";
 
     private static final int INVALID_SCREEN = -1;
+    public static final int SPEC_UNDEFINED = -1;
 
     /**
      * The velocity at which a fling gesture will cause us to snap to the next screen
      */
     private static final int SNAP_VELOCITY = 1000;
 
+    private int pageWidthSpec, pageWidth;
+
     private boolean mFirstLayout = true;
 
-    private int mCurrentScreen;
-    private int mNextScreen = INVALID_SCREEN;
+    private int mCurrentPage;
+    private int mNextPage = INVALID_SCREEN;
 
     private Scroller mScroller;
     private VelocityTracker mVelocityTracker;
+
+    private int mTouchSlop;
+    private int mMaximumVelocity;
 
     private float mLastMotionX;
     private float mLastMotionY;
@@ -91,35 +114,62 @@ public class HorizontalPager extends ViewGroup
      */
     public HorizontalPager(Context context, AttributeSet attrs, int defStyle) {
         super(context, attrs, defStyle);
-        initWorkspace();
+
+        TypedArray a = context.obtainStyledAttributes(attrs, R.styleable.com_deezapps_widget_HorizontalPager);
+        pageWidthSpec = a.getDimensionPixelSize(R.styleable.com_deezapps_widget_HorizontalPager_pageWidth, SPEC_UNDEFINED);
+        a.recycle();
+
+        init();
     }
 
     /**
      * Initializes various states for this workspace.
      */
-    private void initWorkspace() {
+    private void init() {
         mScroller = new Scroller(getContext());
-        mCurrentScreen = 0;
+        mCurrentPage = 0;
+
+        final ViewConfiguration configuration = ViewConfiguration.get(getContext());
+        mTouchSlop = configuration.getScaledTouchSlop();
+        mMaximumVelocity = configuration.getScaledMaximumFlingVelocity();
     }
 
     /**
-     * Returns the index of the currently displayed screen.
+     * Returns the index of the currently displayed page.
      *
-     * @return The index of the currently displayed screen.
+     * @return The index of the currently displayed page.
      */
-    int getCurrentScreen() {
-        return mCurrentScreen;
+    int getCurrentPage() {
+        return mCurrentPage;
     }
 
     /**
-     * Sets the current screen.
+     * Sets the current page.
      *
-     * @param currentScreen
+     * @param currentPage
      */
-    public void setCurrentScreen(int currentScreen) {
-        mCurrentScreen = Math.max(0, Math.min(currentScreen, getChildCount()));
-        scrollTo(mCurrentScreen * getWidth(), 0);
+    public void setCurrentPage(int currentPage) {
+        mCurrentPage = Math.max(0, Math.min(currentPage, getChildCount()));
+        scrollTo(getScrollXForPage(mCurrentPage), 0);
         invalidate();
+    }
+
+    public int getPageWidth() {
+        return pageWidth;
+    }
+
+    public void setPageWidth(int pageWidth) {
+        this.pageWidthSpec = pageWidth;
+    }
+
+    /**
+     * Gets the value that getScrollX() should return if the specified page is the current page (and no other scrolling is occurring).
+     * Use this to pass a value to scrollTo(), for example.
+     * @param whichPage
+     * @return
+     */
+    private int getScrollXForPage(int whichPage) {
+        return (whichPage * pageWidth) - pageWidthPadding();
     }
 
     @Override
@@ -127,9 +177,9 @@ public class HorizontalPager extends ViewGroup
         if (mScroller.computeScrollOffset()) {
             scrollTo(mScroller.getCurrX(), mScroller.getCurrY());
             postInvalidate();
-        } else if (mNextScreen != INVALID_SCREEN) {
-            mCurrentScreen = mNextScreen;
-            mNextScreen = INVALID_SCREEN;
+        } else if (mNextPage != INVALID_SCREEN) {
+            mCurrentPage = mNextPage;
+            mNextPage = INVALID_SCREEN;
             clearChildrenCache();
         }
     }
@@ -142,47 +192,40 @@ public class HorizontalPager extends ViewGroup
         // children, etc. The following implementation attempts to fast-track
         // the drawing dispatch by drawing only what we know needs to be drawn.
 
-        boolean fastDraw = mTouchState != TOUCH_STATE_SCROLLING && mNextScreen == INVALID_SCREEN;
-        // If we are not scrolling or flinging, draw only the current screen
-        if (fastDraw) {
-            drawChild(canvas, getChildAt(mCurrentScreen), getDrawingTime());
-        } else {
-            final long drawingTime = getDrawingTime();
-            // If we are flinging, draw only the current screen and the target screen
-            if (mNextScreen >= 0 && mNextScreen < getChildCount() && Math.abs(mCurrentScreen - mNextScreen) == 1) {
-                drawChild(canvas, getChildAt(mCurrentScreen), drawingTime);
-                drawChild(canvas, getChildAt(mNextScreen), drawingTime);
-            } else {
-                // If we are scrolling, draw all of our children
-                final int count = getChildCount();
-                for (int i = 0; i < count; i++) {
-                    drawChild(canvas, getChildAt(i), drawingTime);
-                }
-            }
+        final long drawingTime = getDrawingTime();
+        // todo be smarter about which children need drawing
+        final int count = getChildCount();
+        for (int i = 0; i < count; i++) {
+            drawChild(canvas, getChildAt(i), drawingTime);
         }
 
         for (OnScrollListener mListener : mListeners) {
-            mListener.onScroll(getScrollX());
-            if (getScrollX() % getWidth() == 0) {
-                mListener.onViewScrollFinished(getScrollX() / getWidth());
+            int adjustedScrollX = getScrollX() + pageWidthPadding();
+            mListener.onScroll(adjustedScrollX);
+            if (adjustedScrollX % pageWidth == 0) {
+                mListener.onViewScrollFinished(adjustedScrollX / pageWidth);
             }
         }
+    }
+
+    int pageWidthPadding() {
+        return ((getMeasuredWidth() - pageWidth) / 2);
     }
 
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
         super.onMeasure(widthMeasureSpec, heightMeasureSpec);
 
-        final int width = MeasureSpec.getSize(widthMeasureSpec);
+        pageWidth = pageWidthSpec == SPEC_UNDEFINED ? getMeasuredWidth() : pageWidthSpec;
+        pageWidth = Math.min(pageWidth, getMeasuredWidth());
 
-        // The children are given the same width and height as the workspace
         final int count = getChildCount();
         for (int i = 0; i < count; i++) {
-            getChildAt(i).measure(widthMeasureSpec, heightMeasureSpec);
+            getChildAt(i).measure(MeasureSpec.makeMeasureSpec(pageWidth, MeasureSpec.EXACTLY), heightMeasureSpec);
         }
 
         if (mFirstLayout) {
-            scrollTo(mCurrentScreen * width, 0);
+            scrollTo(getScrollXForPage(mCurrentPage), 0);
             mFirstLayout = false;
         }
     }
@@ -205,7 +248,7 @@ public class HorizontalPager extends ViewGroup
     @Override
     public boolean requestChildRectangleOnScreen(View child, Rect rectangle, boolean immediate) {
         int screen = indexOfChild(child);
-        if (screen != mCurrentScreen || !mScroller.isFinished()) {
+        if (screen != mCurrentPage || !mScroller.isFinished()) {
             return true;
         }
         return false;
@@ -214,10 +257,10 @@ public class HorizontalPager extends ViewGroup
     @Override
     protected boolean onRequestFocusInDescendants(int direction, Rect previouslyFocusedRect) {
         int focusableScreen;
-        if (mNextScreen != INVALID_SCREEN) {
-            focusableScreen = mNextScreen;
+        if (mNextPage != INVALID_SCREEN) {
+            focusableScreen = mNextPage;
         } else {
-            focusableScreen = mCurrentScreen;
+            focusableScreen = mCurrentPage;
         }
         getChildAt(focusableScreen).requestFocus(direction, previouslyFocusedRect);
         return false;
@@ -226,13 +269,13 @@ public class HorizontalPager extends ViewGroup
     @Override
     public boolean dispatchUnhandledMove(View focused, int direction) {
         if (direction == View.FOCUS_LEFT) {
-            if (getCurrentScreen() > 0) {
-                snapToScreen(getCurrentScreen() - 1);
+            if (getCurrentPage() > 0) {
+                snapToPage(getCurrentPage() - 1);
                 return true;
             }
         } else if (direction == View.FOCUS_RIGHT) {
-            if (getCurrentScreen() < getChildCount() - 1) {
-                snapToScreen(getCurrentScreen() + 1);
+            if (getCurrentPage() < getChildCount() - 1) {
+                snapToPage(getCurrentPage() + 1);
                 return true;
             }
         }
@@ -241,14 +284,14 @@ public class HorizontalPager extends ViewGroup
 
     @Override
     public void addFocusables(ArrayList<View> views, int direction) {
-        getChildAt(mCurrentScreen).addFocusables(views, direction);
+        getChildAt(mCurrentPage).addFocusables(views, direction);
         if (direction == View.FOCUS_LEFT) {
-            if (mCurrentScreen > 0) {
-                getChildAt(mCurrentScreen - 1).addFocusables(views, direction);
+            if (mCurrentPage > 0) {
+                getChildAt(mCurrentPage - 1).addFocusables(views, direction);
             }
         } else if (direction == View.FOCUS_RIGHT){
-            if (mCurrentScreen < getChildCount() - 1) {
-                getChildAt(mCurrentScreen + 1).addFocusables(views, direction);
+            if (mCurrentPage < getChildCount() - 1) {
+                getChildAt(mCurrentPage + 1).addFocusables(views, direction);
             }
         }
     }
@@ -325,10 +368,9 @@ public class HorizontalPager extends ViewGroup
          */
         final int xDiff = (int) Math.abs(x - mLastMotionX);
         final int yDiff = (int) Math.abs(y - mLastMotionY);
-        final int touchSlop = ViewConfiguration.getTouchSlop();
 
-        boolean xMoved = xDiff > touchSlop;
-        boolean yMoved = yDiff > touchSlop;
+        boolean xMoved = xDiff > mTouchSlop;
+        boolean yMoved = yDiff > mTouchSlop;
 
         if (xMoved || yMoved) {
 
@@ -343,7 +385,7 @@ public class HorizontalPager extends ViewGroup
                 // Try canceling the long press. It could also have been scheduled
                 // by a distant descendant, so use the mAllowLongPress flag to block
                 // everything
-                final View currentScreen = getChildAt(mCurrentScreen);
+                final View currentScreen = getChildAt(mCurrentPage);
                 currentScreen.cancelLongPress();
             }
         }
@@ -401,15 +443,15 @@ public class HorizontalPager extends ViewGroup
             case MotionEvent.ACTION_UP:
                 if (mTouchState == TOUCH_STATE_SCROLLING) {
                     final VelocityTracker velocityTracker = mVelocityTracker;
-                    velocityTracker.computeCurrentVelocity(1000);
+                    velocityTracker.computeCurrentVelocity(1000, mMaximumVelocity);
                     int velocityX = (int) velocityTracker.getXVelocity();
 
-                    if (velocityX > SNAP_VELOCITY && mCurrentScreen > 0) {
+                    if (velocityX > SNAP_VELOCITY && mCurrentPage > 0) {
                         // Fling hard enough to move left
-                        snapToScreen(mCurrentScreen - 1);
-                    } else if (velocityX < -SNAP_VELOCITY && mCurrentScreen < getChildCount() - 1) {
+                        snapToPage(mCurrentPage - 1);
+                    } else if (velocityX < -SNAP_VELOCITY && mCurrentPage < getChildCount() - 1) {
                         // Fling hard enough to move right
-                        snapToScreen(mCurrentScreen + 1);
+                        snapToPage(mCurrentPage + 1);
                     } else {
                         snapToDestination();
                     }
@@ -429,31 +471,30 @@ public class HorizontalPager extends ViewGroup
     }
 
     private void snapToDestination() {
-        final int screenWidth = getWidth();
-        final int startX = mCurrentScreen * screenWidth;
-        int whichScreen = mCurrentScreen;
-        if (getScrollX() < startX - screenWidth/8) {
-            whichScreen = Math.max(0, whichScreen-1);
-        } else if (getScrollX() > startX + screenWidth/8) {
-            whichScreen = Math.min(getChildCount()-1, whichScreen+1);
+        final int startX = getScrollXForPage(mCurrentPage);
+        int whichPage = mCurrentPage;
+        if (getScrollX() < startX - getWidth()/8) {
+            whichPage = Math.max(0, whichPage-1);
+        } else if (getScrollX() > startX + getWidth()/8) {
+            whichPage = Math.min(getChildCount()-1, whichPage+1);
         }
 
-        snapToScreen(whichScreen);
+        snapToPage(whichPage);
     }
 
-    void snapToScreen(int whichScreen) {
+    void snapToPage(int whichPage) {
         enableChildrenCache();
 
-        boolean changingScreens = whichScreen != mCurrentScreen;
+        boolean changingPages = whichPage != mCurrentPage;
 
-        mNextScreen = whichScreen;
+        mNextPage = whichPage;
 
         View focusedChild = getFocusedChild();
-        if (focusedChild != null && changingScreens && focusedChild == getChildAt(mCurrentScreen)) {
+        if (focusedChild != null && changingPages && focusedChild == getChildAt(mCurrentPage)) {
             focusedChild.clearFocus();
         }
 
-        final int newX = whichScreen * getWidth();
+        final int newX = getScrollXForPage(whichPage);
         final int delta = newX - getScrollX();
         mScroller.startScroll(getScrollX(), 0, delta, 0, Math.abs(delta) * 2);
         invalidate();
@@ -462,7 +503,7 @@ public class HorizontalPager extends ViewGroup
     @Override
     protected Parcelable onSaveInstanceState() {
         final SavedState state = new SavedState(super.onSaveInstanceState());
-        state.currentScreen = mCurrentScreen;
+        state.currentScreen = mCurrentPage;
         return state;
     }
 
@@ -470,21 +511,20 @@ public class HorizontalPager extends ViewGroup
     protected void onRestoreInstanceState(Parcelable state) {
         SavedState savedState = (SavedState) state;
         super.onRestoreInstanceState(savedState.getSuperState());
-        if (savedState.currentScreen != -1) {
-            mCurrentScreen = savedState.currentScreen;
+        if (savedState.currentScreen != INVALID_SCREEN) {
+            mCurrentPage = savedState.currentScreen;
         }
     }
 
     public void scrollLeft() {
-        if (mNextScreen == INVALID_SCREEN && mCurrentScreen > 0 && mScroller.isFinished()) {
-            snapToScreen(mCurrentScreen - 1);
+        if (mNextPage == INVALID_SCREEN && mCurrentPage > 0 && mScroller.isFinished()) {
+            snapToPage(mCurrentPage - 1);
         }
     }
 
     public void scrollRight() {
-        if (mNextScreen == INVALID_SCREEN && mCurrentScreen < getChildCount() -1 &&
-            mScroller.isFinished()) {
-            snapToScreen(mCurrentScreen + 1);
+        if (mNextPage == INVALID_SCREEN && mCurrentPage < getChildCount() - 1 && mScroller.isFinished()) {
+            snapToPage(mCurrentPage + 1);
         }
     }
 
@@ -547,8 +587,22 @@ public class HorizontalPager extends ViewGroup
         mListeners.remove(listener);
     }
 
+    /**
+     * Implement to receive events on scroll position and page snaps.
+     */
     public static interface OnScrollListener {
+        /**
+         * Receives the current scroll X value.  This value will be adjusted to assume the left edge of the first
+         * page has a scroll position of 0.  Note that values less than 0 and greater than the right edge of the
+         * last page are possible due to touch events scrolling beyond the edges.
+         * @param scrollX Scroll X value
+         */
         void onScroll(int scrollX);
-        void onViewScrollFinished(int viewIndex);
+
+        /**
+         * Invoked when scrolling is finished (settled on a page, centered).
+         * @param currentPage The current page
+         */
+        void onViewScrollFinished(int currentPage);
     }
 }
